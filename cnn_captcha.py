@@ -15,8 +15,7 @@ META=None
 LOADCHECK=None
 PRINT_EVERY_BATCH=500
 LR_RATE=0.001
-EPOCH=10
-BATCHSIZE=2
+BATCHSIZE=1
 
 FORMATTER = logging.Formatter("%(asctime)s — %(name)s — %(levelname)s — %(message)s")
 LOGGER = None
@@ -256,7 +255,6 @@ def predict(imgFile,loadCheck):
 	cnn.eval()
 	img=torch.from_numpy(io.imread(imgFile)).type(torch.FloatTensor).to(device).unsqueeze(dim=0)
 	ans=cnn(img).view(meta['num_per_image'],meta['label_size']).argmax(dim=1)
-	LOGGER.info("Predicted captcha {}".format(ans))
 	ans=''.join(meta['label_choices'][i] for i in list(ans))
 	LOGGER.info("Predicted captcha {}".format(ans))
 	return ans

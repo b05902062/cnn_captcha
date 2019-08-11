@@ -51,12 +51,10 @@ def gen_dataset():
     test_ratio = FLAGS.t
 
     choices = get_choices()
-    '''
     width = 140
     height = 45
-    '''
-    width = 40 + 20 * num_per_image
-    height = 100
+    #width = 40 + 20 * num_per_image
+    #height = 100
     # meta info
     meta = {
         'num_per_image': num_per_image,
