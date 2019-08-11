@@ -111,85 +111,44 @@ def preprocess():
 
 	return (meta,trainImgList,trainImgAns,testImgList,testImgAns)
 
-class cnnNet(nn.Module):
-	def __init__(self):
-		super(cnnNet, self).__init__()
+class twoLayerNet(nn.Module):
+	def __init__(self,meta,convKernel=5,layer=2):
+		super(twoLayerNet, self).__init__()
 		LOGGER.info(f"input image size {str(meta['height'])}*{str(meta['width'])} height * width")
-		def layerSize(height,width):
-			height=(height-self.convKernel)+1 #conv2d refer to pytorch doc
-			height=math.floor( ((height-2)/2) + 1) #pool refer to pytorch doc
-			width=(width-self.convKernel)+1
-			width=math.floor( ((width-2)/2) + 1)
-			return (height,width)
-
-		self.linearH,self.linearW=META['height'],META['width']
-		for i in range(META['convLayer')]:
-			(self.linearH,self.linearW) = layerSize(self.linearH,self.linearW)
-		
-		LOGGER.debug("image size after all conv2d height*width {}*{}".format(self.linearH,self.linearW))
-		if self.width <= 0 or self.height <=0:
-			LOGGER.info("convLayer too many or image too small")
-			exit()
-		self.convLayer=META['convLayer']
-		self.convKernel=META['convKernel']
+		self.layer=layer
 		self.cnnList=nn.ModuleList()
-		for i in range(self.convLayer):
+		for i in range(layer):
 			#nn.Conv2d(in_channel,out_channel,kernel)
-			self.cnnList.append(nn.Conv2d(3,16,self.convKernel) if i==0 else nn.Conv2d(16,16,self.convKernel) )
+			self.cnnList.append(nn.Conv2d(3,16,convKernel) if i==0 else nn.Conv2d(16,16,convKernel) )
 
 		#nn.MacPool2d(kernel,stride),fixed here.
 		self.pool=nn.MaxPool2d(2,2)
 		
-	def forward(self,x):
+		def layerSize(height,width):
+			height=(height-convKernel)+1 #conv2d refer to pytorch doc
+			height=math.floor( ((height-2)/2) + 1) #pool refer to pytorch doc
+			width=(width-convKernel)+1
+			width=math.floor( ((width-2)/2) + 1)
+			return (height,width)
+
+		self.linearH,self.linearW=meta['height'],meta['width']
+		for i in range(layer):
+			(self.linearH,self.linearW) = layerSize(self.linearH,self.linearW)
+		LOGGER.debug("image size after all conv2d height*width {}*{}".format(self.linearH,self.linearW))
+
+		self.fc1=nn.Linear(16*self.linearH*self.linearW,256)
+		self.fc2=nn.Linear(256,128)
+		self.fc3=nn.Linear(128,meta['num_per_image']*meta['label_size'])
+
+	def forward(self,x):		
 		#x becomes batch*channel*height*width
 		x=x.transpose(1,3).transpose(2,3)
 		for i in range(self.layer):
 			x = self.pool(F.relu(self.cnnList[i](x)))
-		return x
-
-
-class fcNet(nn.Module):
-	def __init__(self):
-		super(fcNet, self).__init__()
-		
-		def layerSize(height,width):
-			height=(height-self.convKernel)+1 #conv2d refer to pytorch doc
-			height=math.floor( ((height-2)/2) + 1) #pool refer to pytorch doc
-			width=(width-self.convKernel)+1
-			width=math.floor( ((width-2)/2) + 1)
-			return (height,width)
-
-		self.linearH,self.linearW=META['height'],META['width']
-		for i in range(META['convLayer')]:
-			(self.linearH,self.linearW) = layerSize(self.linearH,self.linearW)
-		self.fcLayer=META['fcLayer']
-		self.fcList=nn.ModuleList()
-		for i in range(self.fcLayer):
-			if i==0 and self.fcLayer==1:
-				fcList.append(nn.Linear(16*self.linearH*self.linearW,META['num_per_image']*META['label_size']))
-			elif i==0:
-				fcList.append(nn.Linear(16*self.linearH*self.linearW,128))
-			elif i != (self.fcLayer-1):
-				fcList.append(nn.Linear(128,128))
-			else:
-				fcList.append(nn.Linear(128,META['num_per_image']*META['label_size']))
-	
-	def forward(self,x)
-
 		x = x.view(-1, 16 * self.linearH * self.linearW)
-		for i in range(self.fcLayer-1):
-			x = F.relu(self.fcList[i](x))
-		x = self.fcList[self.fcLayer-1](x)#last layer without relu.
-		#x is a 2d tensor of size batch*(numper_image*label_size)
-		return x
-
-class captchaNet(nn.module):
-	def __init__(self):
-		self.cnnNet=cnnNet()
-		self.fcNet=fcNet()
-	def forward(self,x):
-		x=self.cnnNet(x)
-		x=self.fcNet(x)
+		x = F.relu(self.fc1(x))
+		x = F.relu(self.fc2(x))
+		x = self.fc3(x)
 		return x
 
 def evaluate(output,ans):
@@ -224,35 +183,33 @@ def train(data):
 	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 	LOGGER.info("using {}".format(device))
 
-	net=captchaNet()
-	net.to(device)
-	optimizer = optim.Adam(net.parameters(),lr=LR_RATE)
+	cnn=twoLayerNet(data[0],convKernel=5,layer=2)
+	cnn.to(device)
+	optimizer = optim.Adam(cnn.parameters(),lr=LR_RATE)
 	LOGGER.info("using Adam optimizer"+"learning rate="+str(LR_RATE))
 	
 	start_epoch=0
 	
 	if META['loadCheck']:
 		checkpoint = torch.load(META['loadCheck'])
-		cnn_sd = checkpoint['cnnModel']
-		fc_d = checkpoint['fcModel']
+		cnn_sd = checkpoint['model']
 		optimizer_sd = checkpoint['optim']
 		start_epoch= checkpoint['iteration']
 		LOGGER.info(f"resume training at {start_epoch} epoch.")
 		if start_epoch>=META['epoch']:
 			LOGGER.info("epoch number too smaller")
 			exit()
-		net.cnnModel.load_state_dict(cnn_sd)
-		net.fcModel.load_state_dict(fc_sd)
+		cnn.load_state_dict(cnn_sd)
 		optimizer.load_state_dict(optimizer_sd)
 
 	loss=0
 	for o in range(start_epoch,META['epoch']):
 		start_epoch+=1
 		for i, batch in enumerate(trainLoader):
-			net.train()
+			cnn.train()
 			#(batch*height*width,batch*num_per_img)
 			batch=(batch[0].to(device),batch[1].to(device))
-			output=net(batch[0])
+			output=cnn(batch[0])
 			loss,_,_ =evaluate(output,batch[1])#calling batch[1] would get ans.
 				
 
@@ -260,14 +217,14 @@ def train(data):
 			loss.backward()
 			optimizer.step()
 			if i % PRINT_EVERY_BATCH==0:	
-				net.eval()
+				cnn.eval()
 				meterBCELoss=AverageMeter()
 				meterImgAcc=AverageMeter()
 				meterLetAcc=AverageMeter()
 				for e,batch in enumerate(testLoader):
 		
 					batch=(batch[0].to(device),batch[1].to(device))
-					output=net(batch[0])
+					output=cnn(batch[0])
 					testEval=evaluate(output,batch[1])
 					meterBCELoss.update(testEval[0],batch[1].shape[0])
 					meterLetAcc.update(testEval[1],batch[1].shape[0])
@@ -275,7 +232,7 @@ def train(data):
 			
 				LOGGER.info("epoch: {:05d}, in_loss: {:.3f}, out_loss: {:.3f}, outLetterAcc: {:.3f}, outImageAcc: {:.3f}".format(o,loss, meterBCELoss.avg,meterLetAcc.avg,meterImgAcc.avg))
 
-	torch.save({"iteration":start_epoch,"cnnModel":net.cnnNet.state_dict(),'fcModel':net.fcNet.state_dict(),"optim":optimizer.state_dict(),"META":META,"letAcc":meterLetAcc.avg,"imgAcc":meterImgAcc.avg},os.path.join(DATADIR,"{}_{}.tar".format(start_epoch,"checkpoint")))
+	torch.save({"iteration":start_epoch,"model":cnn.state_dict(),"optim":optimizer.state_dict(),"meta":data[0],"letAcc":meterLetAcc.avg,"imgAcc":meterImgAcc.avg},os.path.join(DATADIR,"{}_{}.tar".format(start_epoch,"checkpoint")))
 
 
 
@@ -312,23 +269,14 @@ def main():
 	parser.add_argument('-l','--loadCheck',help='filename of a checkpoint, relative to current working directory')
 	parser.add_argument('-p','--predict',action='store_true',help='A path for training data (images).')
 	parser.add_argument('-i','--image',help='A path to the image to precict.')
-	parser.add_argument('-i','--image',help='A path to the image to precict.')
 	parser.add_argument('-e','--epoch',type=int,default=30,help='total number of epoch for either new model or resumed model. e.g. -e 30 -l 15_checkpoint.tar would train this model for 15 more epoches.')
-	parser.add_argument('--convlayer',type=int,defaut=2,help='number of layer for convNet')
-	parser.add_argument('--convKernel',type=int,defaut=5,help='size of kernel for convNet.')
-	parser.add_argument('--fclayer',type=int,defaut=3,help='number of layer for fcNet')
-	parser.add_argument('--pretrainedModel',help='load pretrained convolution Model, for captcha with many letters are hard to train directly')
 	args = parser.parse_args()
 	
 	if args.predict and (args.image is None or args.loadCheck is None):
 		parser.error("[-i --image] [-l --loadCheck] are required")
 	elif (not args.predict and args.data is None):
 		parser.error("[-d --data] is required")
-	elif args.convLayer <=1:
-		parser.error('convLayer has to be bigger of equal than 2')
-	elif args.pretrainedModel and args.loadCheck:
-		parser.error('cannot loadCheck and load pretrainedModel at the same time
-')
+
 	DATADIR=args.data
 	
 	if args.predict:
