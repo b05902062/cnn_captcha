@@ -10,12 +10,12 @@ import json
 from torch.utils.data import Dataset, DataLoader
 import logging
 import skimage.io as io
-
+import cv2
 META=None
 LOADCHECK=None
 PRINT_EVERY_BATCH=500
 LR_RATE=0.001
-BATCHSIZE=1
+BATCHSIZE=16
 
 FORMATTER = logging.Formatter("%(asctime)s — %(name)s — %(levelname)s — %(message)s")
 LOGGER = None
@@ -114,20 +114,20 @@ def preprocess():
 class cnnNet(nn.Module):
 	def __init__(self):
 		super(cnnNet, self).__init__()
-		LOGGER.info(f"input image size {str(meta['height'])}*{str(meta['width'])} height * width")
+		LOGGER.info(f"input image size {str(META['height'])}*{str(META['width'])} height * width")
 		def layerSize(height,width):
-			height=(height-self.convKernel)+1 #conv2d refer to pytorch doc
+			height=(height-META['convKernel'])+1 #conv2d refer to pytorch doc
 			height=math.floor( ((height-2)/2) + 1) #pool refer to pytorch doc
-			width=(width-self.convKernel)+1
+			width=(width-META['convKernel'])+1
 			width=math.floor( ((width-2)/2) + 1)
 			return (height,width)
 
 		self.linearH,self.linearW=META['height'],META['width']
-		for i in range(META['convLayer')]:
+		for i in range(META['convLayer']):
 			(self.linearH,self.linearW) = layerSize(self.linearH,self.linearW)
 		
 		LOGGER.debug("image size after all conv2d height*width {}*{}".format(self.linearH,self.linearW))
-		if self.width <= 0 or self.height <=0:
+		if self.linearH <= 0 or self.linearW <=0:
 			LOGGER.info("convLayer too many or image too small")
 			exit()
 		self.convLayer=META['convLayer']
@@ -139,11 +139,11 @@ class cnnNet(nn.Module):
 
 		#nn.MacPool2d(kernel,stride),fixed here.
 		self.pool=nn.MaxPool2d(2,2)
-		
+	
 	def forward(self,x):
 		#x becomes batch*channel*height*width
 		x=x.transpose(1,3).transpose(2,3)
-		for i in range(self.layer):
+		for i in range(self.convLayer):
 			x = self.pool(F.relu(self.cnnList[i](x)))
 		return x
 
@@ -153,28 +153,28 @@ class fcNet(nn.Module):
 		super(fcNet, self).__init__()
 		
 		def layerSize(height,width):
-			height=(height-self.convKernel)+1 #conv2d refer to pytorch doc
+			height=(height-META['convKernel'])+1 #conv2d refer to pytorch doc
 			height=math.floor( ((height-2)/2) + 1) #pool refer to pytorch doc
-			width=(width-self.convKernel)+1
+			width=(width-META['convKernel'])+1
 			width=math.floor( ((width-2)/2) + 1)
 			return (height,width)
 
 		self.linearH,self.linearW=META['height'],META['width']
-		for i in range(META['convLayer')]:
+		for i in range(META['convLayer']):
 			(self.linearH,self.linearW) = layerSize(self.linearH,self.linearW)
 		self.fcLayer=META['fcLayer']
 		self.fcList=nn.ModuleList()
 		for i in range(self.fcLayer):
 			if i==0 and self.fcLayer==1:
-				fcList.append(nn.Linear(16*self.linearH*self.linearW,META['num_per_image']*META['label_size']))
+				self.fcList.append(nn.Linear(16*self.linearH*self.linearW,META['num_per_image']*META['label_size']))
 			elif i==0:
-				fcList.append(nn.Linear(16*self.linearH*self.linearW,128))
+				self.fcList.append(nn.Linear(16*self.linearH*self.linearW,128))
 			elif i != (self.fcLayer-1):
-				fcList.append(nn.Linear(128,128))
+				self.fcList.append(nn.Linear(128,128))
 			else:
-				fcList.append(nn.Linear(128,META['num_per_image']*META['label_size']))
+				self.fcList.append(nn.Linear(128,META['num_per_image']*META['label_size']))
 	
-	def forward(self,x)
+	def forward(self,x):
 
 		x = x.view(-1, 16 * self.linearH * self.linearW)
 		for i in range(self.fcLayer-1):
@@ -183,8 +183,10 @@ class fcNet(nn.Module):
 		#x is a 2d tensor of size batch*(numper_image*label_size)
 		return x
 
-class captchaNet(nn.module):
+class captchaNet(nn.Module):
 	def __init__(self):
+		super(captchaNet, self).__init__()
+
 		self.cnnNet=cnnNet()
 		self.fcNet=fcNet()
 	def forward(self,x):
@@ -218,7 +220,7 @@ def getAns(output):
 def train(data):
 
 	
-	trainLoader = DataLoader(captchaDataset(data[1],data[2]), batch_size=BATCHSIZE,shuffle=True, num_workers=4)
+	trainLoader = DataLoader(captchaDataset(data[1],data[2]), batch_size=BATCHSIZE,shuffle=True)
 	testLoader = DataLoader(captchaDataset(data[3],data[4]), batch_size=BATCHSIZE,shuffle=False)
 
 	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
@@ -226,24 +228,34 @@ def train(data):
 
 	net=captchaNet()
 	net.to(device)
-	optimizer = optim.Adam(net.parameters(),lr=LR_RATE)
-	LOGGER.info("using Adam optimizer"+"learning rate="+str(LR_RATE))
 	
 	start_epoch=0
 	
 	if META['loadCheck']:
 		checkpoint = torch.load(META['loadCheck'])
 		cnn_sd = checkpoint['cnnModel']
-		fc_d = checkpoint['fcModel']
-		optimizer_sd = checkpoint['optim']
+		fc_sd = checkpoint['fcModel']
+		#optimizer_sd = checkpoint['optim']
 		start_epoch= checkpoint['iteration']
 		LOGGER.info(f"resume training at {start_epoch} epoch.")
 		if start_epoch>=META['epoch']:
 			LOGGER.info("epoch number too smaller")
 			exit()
-		net.cnnModel.load_state_dict(cnn_sd)
-		net.fcModel.load_state_dict(fc_sd)
-		optimizer.load_state_dict(optimizer_sd)
+		net.cnnNet.load_state_dict(cnn_sd)
+		net.fcNet.load_state_dict(fc_sd)
+		#optimizer.load_state_dict(optimizer_sd)
+	if META['pretrainedModel']:
+		checkpoint = torch.load(META['pretrainedModel'])
+		cnn_sd = checkpoint['cnnModel']
+		LOGGER.info(f"loading pretrained model at {META['pretrainedModel']}")
+		net.cnnNet.load_state_dict(cnn_sd)
+	if META['fixConv']:
+		for p in net.cnnNet.parameters():
+			p.requires_grad=False
+
+
+	optimizer = optim.Adam([p for p in net.parameters() if p.requires_grad ],lr=LR_RATE)
+	LOGGER.info("using Adam optimizer"+"learning rate="+str(LR_RATE))
 
 	loss=0
 	for o in range(start_epoch,META['epoch']):
@@ -264,6 +276,7 @@ def train(data):
 				meterBCELoss=AverageMeter()
 				meterImgAcc=AverageMeter()
 				meterLetAcc=AverageMeter()
+				#LOGGER.debug(f'cnn parametres {list(net.cnnNet.parameters())}')
 				for e,batch in enumerate(testLoader):
 		
 					batch=(batch[0].to(device),batch[1].to(device))
@@ -283,22 +296,27 @@ def predict(imgFile,loadCheck):
 
 	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 	#LOGGER.info("using {}".format(device))
-	global DATADIR,LOG_FILE,LOGGER
+	global DATADIR,META,LOGGER
 	DATADIR = "./predict/"
 	if not os.path.exists(DATADIR):
 		os.makedirs(DATADIR,0o0700)
 	LOGGER=getLogger("captchaLogger")
 	
 	checkpoint = torch.load(loadCheck)
-	meta = checkpoint['meta']
-	cnn_sd = checkpoint['model']
-	cnn=twoLayerNet(meta)
-	cnn.load_state_dict(cnn_sd)
-	cnn.to(device)
-	cnn.eval()
-	img=torch.from_numpy(io.imread(imgFile)).type(torch.FloatTensor).to(device).unsqueeze(dim=0)
-	ans=cnn(img).view(meta['num_per_image'],meta['label_size']).argmax(dim=1)
-	ans=''.join(meta['label_choices'][i] for i in list(ans))
+	META=checkpoint['META']
+	net=captchaNet()
+	
+	cnn_sd = checkpoint['cnnModel']
+	fc_sd = checkpoint['fcModel']
+	net.cnnNet.load_state_dict(cnn_sd)
+	net.fcNet.load_state_dict(fc_sd)
+	
+	net.to(device)
+	net.eval()
+	#img=torch.from_numpy(io.imread(imgFile)).type(torch.FloatTensor).to(device).unsqueeze(dim=0)
+	img=torch.from_numpy(cv2.imread(imgFile)).type(torch.FloatTensor).to(device).unsqueeze(dim=0)
+	ans=net(img).view(META['num_per_image'],META['label_size']).argmax(dim=1)
+	ans=''.join(META['label_choices'][i] for i in list(ans))
 	LOGGER.info("Predicted captcha {}".format(ans))
 	return ans
 
@@ -312,25 +330,23 @@ def main():
 	parser.add_argument('-l','--loadCheck',help='filename of a checkpoint, relative to current working directory')
 	parser.add_argument('-p','--predict',action='store_true',help='A path for training data (images).')
 	parser.add_argument('-i','--image',help='A path to the image to precict.')
-	parser.add_argument('-i','--image',help='A path to the image to precict.')
 	parser.add_argument('-e','--epoch',type=int,default=30,help='total number of epoch for either new model or resumed model. e.g. -e 30 -l 15_checkpoint.tar would train this model for 15 more epoches.')
-	parser.add_argument('--convlayer',type=int,defaut=2,help='number of layer for convNet')
-	parser.add_argument('--convKernel',type=int,defaut=5,help='size of kernel for convNet.')
-	parser.add_argument('--fclayer',type=int,defaut=3,help='number of layer for fcNet')
-	parser.add_argument('--pretrainedModel',help='load pretrained convolution Model, for captcha with many letters are hard to train directly')
+	parser.add_argument('--convLayer',type=int,default=2,help='number of layer for convNet')
+	parser.add_argument('--convKernel',type=int,default=5,help='size of kernel for convNet.')
+	parser.add_argument('--fcLayer',type=int,default=3,help='number of layer for fcNet')
+	parser.add_argument('--pretrainedModel',help='load pretrained convolution Model, for captcha with many letters are hard to train directly. e.g. load a 2 digit checkpoint to train a 5 digit. the height and width of the images should be the same')
+	parser.add_argument('--fixConv',action='store_true',help='fix the parameters in convLayers.')
 	args = parser.parse_args()
 	
 	if args.predict and (args.image is None or args.loadCheck is None):
 		parser.error("[-i --image] [-l --loadCheck] are required")
 	elif (not args.predict and args.data is None):
-		parser.error("[-d --data] is required")
+		parser.error("[-d --data] is required when training.")
 	elif args.convLayer <=1:
 		parser.error('convLayer has to be bigger of equal than 2')
 	elif args.pretrainedModel and args.loadCheck:
-		parser.error('cannot loadCheck and load pretrainedModel at the same time
-')
+		parser.error('cannot loadCheck and load pretrainedModel at the same time')
 	DATADIR=args.data
-	
 	if args.predict:
 		predict(args.image,args.loadCheck)
 	else:
