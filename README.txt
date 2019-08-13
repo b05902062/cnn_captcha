@@ -88,7 +88,7 @@ Thus, I wrote a pytorch captcha solver. It has an easy to use interface for naiv
 
             more advanced usage:
 
-            possible parameter -d -l -e -b --printEveryBatch --learnRate --convLayer --convKernel --fcLayer --pretrainedModel --fixConv
+            possible parameter -d -l -e -b --printEveryBatch --learnRate --weightDecay --convLayer --convKernel --fcLayer --pretrainedModel --fixConv
             required parameter -d
 
             e.g. python3 cnn_captcha.py -d images/char-5-epoch-10/ --convLayer 3 --convKernel 7 --fcLayer 4
