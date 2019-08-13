@@ -256,6 +256,9 @@ def train(data):
 	
 	start_epoch=0
 	
+	if META['printEveryBatch']>( (len(data[1])-1+META['batchSize'])//META['batchSize']   ):
+		META['printEveryBatch']=( (len(data[1])-1+META['batchSize'])//META['batchSize'] )
+
 	if META['loadCheck']:
 		checkpoint = torch.load(META['loadCheck'])
 		checkpoint['META']
@@ -280,7 +283,7 @@ def train(data):
 			p.requires_grad=False
 
 
-	optimizer = optim.Adam([p for p in net.parameters() if p.requires_grad ],lr=META['learnRate'])
+	optimizer = optim.Adam([p for p in net.parameters() if p.requires_grad ],lr=META['learnRate'],weight_decay=META['weightDecay'])
 	LOGGER.info("using Adam optimizer"+"learning rate="+str(META['learnRate']))
 
 	loss=0
@@ -319,40 +322,62 @@ def train(data):
 				LOGGER.info("epoch: {:03d}, {:05d}th batch in_loss: {:.3f}, out_loss: {:.3f}, outLetterAcc: {:.3f}, outImageAcc: {:.3f}".format(start_epoch,i+1,loss, meterBCELoss.avg,meterLetAcc.avg,meterImgAcc.avg))
 
 	torch.save({"iteration":start_epoch,"cnnModel":net.cnnNet.state_dict(),'fcModel':net.fcNet.state_dict(),"optim":optimizer.state_dict(),"META":META,"letAcc":meterLetAcc.avg,"imgAcc":meterImgAcc.avg},os.path.join(DATADIR,"{}_{}.tar".format(start_epoch,"checkpoint")))
-
+	LOGGER.info(f'model saved at {os.path.join(DATADIR,"{}_{}.tar".format(start_epoch,"checkpoint"))}')
 
 
 def predict(imgFile,loadCheck):
-
-	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
-	#LOGGER.info("using {}".format(device))
+	
 	global DATADIR,META,LOGGER
+
 	DATADIR = "./predict/"
 	if not os.path.exists(DATADIR):
 		os.makedirs(DATADIR,0o0700)
 	LOGGER=getLogger("captchaLogger")
 	
+	#device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+	#use cpu directly seem to be faster.
+	device = torch.device("cpu")
+	LOGGER.info("using {}".format(device))
+
 	checkpoint = torch.load(loadCheck)
-	META=checkpoint['META']
+	META=checkpoint['META']	
+
 	net=captchaNet()
-	
+
 	cnn_sd = checkpoint['cnnModel']
 	fc_sd = checkpoint['fcModel']
 	net.cnnNet.load_state_dict(cnn_sd)
 	net.fcNet.load_state_dict(fc_sd)
-	
+
 	net.to(device)
 	net.eval()
+
 	#img=torch.from_numpy(io.imread(imgFile)).type(torch.FloatTensor).to(device).unsqueeze(dim=0)
-	img=torch.from_numpy(cv2.imread(imgFile)).type(torch.FloatTensor).to(device).unsqueeze(dim=0)
+
+	'''
+	arbitrarily pass something to imgFile and fetch a image to store in imgFile here?
+	probably comment the below if statement, too.
+	'''
+
+	img=cv2.imread(imgFile,1)#color image three channel
+
+	if img.shape[0]!=META['height'] or img.shape[1]!=META['width']:
+		LOGGER.info("Error: images to be predicted should have the same width and height of the training data.")
+		exit()
+
+	img=torch.from_numpy(img).type(torch.FloatTensor).to(device).unsqueeze(dim=0)
 	ans=net(img).view(META['num_per_image'],META['label_size']).argmax(dim=1)
 	ans=''.join(META['label_choices'][i] for i in list(ans))
+	
+	'''
+	some postprocess using ans, which is a string,?
+	'''
+
 	LOGGER.info("Predicted captcha {}".format(ans))
 	return ans
 
 def main():
 
-	global DATADIR,LOGGER,META
 	parser = argparse.ArgumentParser(description='simple captcha solver. All path should be passed relative to current working directory')
 
 	
@@ -361,28 +386,72 @@ def main():
 	parser.add_argument('-l','--loadCheck',help='path to a checkpoint. -h -w --npi of gen_captcha and --convLayer --convKernel --fcLayer if specified explicitly, if you are using default then it will be ok, in this file should be the same as checkpoint, for we are loading both conv and fc')
 	parser.add_argument('-e','--epoch',type=int,default=30,help='total number of epoch for either new model or resumed model. e.g. -e 30 -l 15_checkpoint.tar would train this model for 15 more epoches.')
 
-	parser.add_argument('-p','--predict',action='store_true',help='Predict mode.')
-	parser.add_argument('-i','--image',help='A path to the image to precict.')
+	parser.add_argument('-p','--predict',action='store_true',help='Predict mode.The image to be predicted should have the same width and height of the training data. prediction mode ignore all parameters except -i and -l and itself.')
+	parser.add_argument('-i','--image',help='A path to "an" image to precict. It accept only an image at a time now')
 
-	parser.add_argument('--printEveryBatch',type=int,default=800,help='print loss every this number of unit.')
+	
+	parser.add_argument('--printEveryBatch',type=int,default=10,help='print loss every this number of unit.')
 	parser.add_argument('--learnRate',type=int,default=0.001,help='learning rate for the optimizer')
+	parser.add_argument('--weightDecay',type=int,default=0,help='L2 regulizer')
 	parser.add_argument('--convLayer',type=int,default=2,help='number of layer for convNet')
 	parser.add_argument('--convKernel',type=int,default=5,help='size of kernel for convNet.')
 	parser.add_argument('--fcLayer',type=int,default=3,help='number of layer for fcNet')
 	parser.add_argument('--pretrainedModel',help='load pretrained convolution Model, for captcha with many letters are hard to train directly. e.g. load a 2 digit checkpoint to train a 5 digit model. -w -h of gen_captcha.py and --convLayer --convKernel if specified explicitly, if you are using default then it will be ok, should be the same as the old one, for we are loading a conv model.')
 	parser.add_argument('--fixConv',action='store_true',help='fix the parameters in convLayers.')
+
 	args = parser.parse_args()
-	
+
+	#check whether there is conflict in parameters.	
 	if args.predict and (args.image is None or args.loadCheck is None):
 		#predict
 		parser.error("[-i --image] [-l --loadCheck] are required when predicting")
 	elif (not args.predict and args.data is None):
 		#training
 		parser.error("[-d --data] is required when training.")
-	elif args.convLayer <=1:
-		parser.error('convLayer has to be bigger of equal than 2')
+	elif args.convLayer <1:
+		parser.error('convLayer has to be bigger of equal than 1')
+	elif args.fcLayer <1:
+		parser.error('fcLayer has to be bigger of equal than 1')
 	elif args.pretrainedModel and args.loadCheck:
 		parser.error('cannot loadCheck and load pretrainedModel at the same time')
+	elif (not args.predict and args.loadCheck):
+		flag=0
+		checkpoint = torch.load(args.loadCheck)
+		oldMETA=checkpoint['META']
+		if oldMETA['convLayer']!=args.convLayer or oldMETA['convKernel']!=args.convKernel or oldMETA['fcLayer']!=args.fcLayer:
+			flag=1
+
+		with open(os.path.join(args.data,'meta.json')) as f:
+		    meta = json.load(f)
+		    f.close()
+		
+		if meta['height']!=oldMETA['height'] or meta['width']!=oldMETA['width'] or meta['num_per_image']!=oldMETA['num_per_image']:
+			flag=1
+
+		if flag:
+			parser.error('when loading a checkpoint while training, --height --width --npi of gen_captcha and --convLayer --convKernel --fcLayer if specified explicitly, if you are using default then it will be ok, in this file should be the same as checkpoint, for we are loading both conv and fc')
+
+	elif (not args.predict and args.pretrainedModel):
+		flag=0
+		checkpoint = torch.load(args.pretrainedModel)
+		oldMETA=checkpoint['META']
+		if oldMETA['convLayer']!=args.convLayer or oldMETA['convKernel']!=args.convKernel:
+			flag=1
+
+		with open(os.path.join(args.data,'meta.json')) as f:
+		    meta = json.load(f)
+		    f.close()
+		
+		if meta['height']!=oldMETA['height'] or meta['width']!=oldMETA['width']:
+			flag=1
+
+		if flag:
+			parser.error('--width --height of gen_captcha.py and --convLayer --convKernel if specified explicitly, if you are using default then it will be ok, should be the same as the old one, for we are loading a conv model.')
+
+
+	#program actually starts here.
+	global DATADIR,LOGGER,META
+
 	DATADIR=args.data
 	if args.predict:
 		predict(args.image,args.loadCheck)
