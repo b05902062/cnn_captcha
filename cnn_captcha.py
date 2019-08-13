@@ -11,23 +11,11 @@ from torch.utils.data import Dataset, DataLoader
 import logging
 import skimage.io as io
 import cv2
-import psutil
-import gc
-import time
-
-
-META=None
-LOADCHECK=None
-PRINT_EVERY_BATCH=500
-LR_RATE=0.001
-BATCHSIZE=16
-
 
 FORMATTER = logging.Formatter("%(asctime)s — %(name)s — %(levelname)s — %(message)s")
 LOGGER = None
 DATADIR=None
-
-
+META=None
 
 def getConsoleHandler():
 	consoleHandler = logging.StreamHandler(sys.stdout)
@@ -69,7 +57,7 @@ class AverageMeter(object):
 		self.count += n
 		self.avg = self.sum / self.count if self.count != 0 else 0
 
-class captchaDataset(Dataset):
+class my_captchaDataset(Dataset):
 
 	def __init__(self,dataList,dataAns,batchSize,eval=None):
 
@@ -98,6 +86,26 @@ class captchaDataset(Dataset):
 			#LOGGER.debug(f'{imgList},{ansList}')
 
 			yield imgList,ansList
+class captchaDataset(Dataset):
+
+        def __init__(self,dataList,dataAns):
+
+                self.data=dataList
+                self.ans=dataAns
+        def __len__(self):
+                return len(self.data)
+        def __getitem__(self,idx):
+
+                #image is a tensor
+                image=io.imread(self.data[idx])
+                image=torch.from_numpy(image).type(torch.FloatTensor)
+
+                #ans is a tensor of length meta['num_per_image']
+                ans=self.ans[idx]
+
+                return (image,ans)
+
+
 
 def preprocess():
 
@@ -235,17 +243,10 @@ def getAns(output):
 def train(data):
 
 	
-	#trainLoader = DataLoader(captchaDataset(data[1],data[2]), batch_size=BATCHSIZE,shuffle=True)
-	#testLoader = DataLoader(captchaDataset(data[3],data[4]), batch_size=BATCHSIZE,shuffle=False)
-	trainLoader=captchaDataset(data[1],data[2],batchSize=16)
-	testLoader=captchaDataset(data[3],data[4],batchSize=16)
-	'''
-	count=0
-	for i in trainLoader:
-		count+=1
-		if count>3:
-			exit()
-	'''
+	trainLoader = DataLoader(captchaDataset(data[1],data[2]), batch_size=META['batchSize'],shuffle=True)
+	testLoader = DataLoader(captchaDataset(data[3],data[4]), batch_size=META['batchSize'],shuffle=False)
+	#trainLoader=my_captchaDataset(data[1],data[2],batchSize=16)
+	#testLoader=my_captchaDataset(data[3],data[4],batchSize=16)
 
 	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 	LOGGER.info("using {}".format(device))
@@ -279,8 +280,8 @@ def train(data):
 			p.requires_grad=False
 
 
-	optimizer = optim.Adam([p for p in net.parameters() if p.requires_grad ],lr=LR_RATE)
-	LOGGER.info("using Adam optimizer"+"learning rate="+str(LR_RATE))
+	optimizer = optim.Adam([p for p in net.parameters() if p.requires_grad ],lr=META['learnRate'])
+	LOGGER.info("using Adam optimizer"+"learning rate="+str(META['learnRate']))
 
 	loss=0
 	for o in range(start_epoch,META['epoch']):
@@ -300,7 +301,7 @@ def train(data):
 			optimizer.zero_grad()
 			loss.backward()
 			optimizer.step()
-			if i % PRINT_EVERY_BATCH==PRINT_EVERY_BATCH-1:	
+			if i % META['printEveryBatch']==META['printEveryBatch']-1:	
 				net.eval()
 				meterBCELoss=AverageMeter()
 				meterImgAcc=AverageMeter()
@@ -356,10 +357,15 @@ def main():
 
 	
 	parser.add_argument('-d','--data',help='A path to the directory containing training data (images).')
+	parser.add_argument('-b','--batchSize',type=int,default=16,help='batch size')
 	parser.add_argument('-l','--loadCheck',help='path to a checkpoint. -h -w --npi of gen_captcha and --convLayer --convKernel --fcLayer if specified explicitly, if you are using default then it will be ok, in this file should be the same as checkpoint, for we are loading both conv and fc')
-	parser.add_argument('-p','--predict',action='store_true',help='A path for training data (images).')
-	parser.add_argument('-i','--image',help='A path to the image to precict.')
 	parser.add_argument('-e','--epoch',type=int,default=30,help='total number of epoch for either new model or resumed model. e.g. -e 30 -l 15_checkpoint.tar would train this model for 15 more epoches.')
+
+	parser.add_argument('-p','--predict',action='store_true',help='Predict mode.')
+	parser.add_argument('-i','--image',help='A path to the image to precict.')
+
+	parser.add_argument('--printEveryBatch',type=int,default=800,help='print loss every this number of unit.')
+	parser.add_argument('--learnRate',type=int,default=0.001,help='learning rate for the optimizer')
 	parser.add_argument('--convLayer',type=int,default=2,help='number of layer for convNet')
 	parser.add_argument('--convKernel',type=int,default=5,help='size of kernel for convNet.')
 	parser.add_argument('--fcLayer',type=int,default=3,help='number of layer for fcNet')

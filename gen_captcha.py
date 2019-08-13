@@ -51,10 +51,16 @@ def gen_dataset():
     test_ratio = FLAGS.t
 
     choices = get_choices()
-    width = 140
-    height = 45
-    #width = 40 + 20 * num_per_image
-    #height = 100
+    if FLAGS.width:
+        width=FLAGS.width
+    else:
+        width=40 + 20 * num_per_image
+
+    if FLAGS.height:
+        height=FLAGS.height
+    else:
+        height=100
+
     # meta info
     meta = {
         'num_per_image': num_per_image,
@@ -88,9 +94,17 @@ if __name__ == '__main__':
 
     parser.add_argument(
         '-s',
-        default=10000,
+        default=1000,
         type=int,
         help='sample number per epoch.')
+    parser.add_argument(
+        '--height',
+        type=int,
+        help='number of pixel in height.')
+    parser.add_argument(
+        '--width',
+        type=int,
+        help='number of pixel in width.')
     parser.add_argument(
         '-t',
         default=0.2,
@@ -121,5 +135,4 @@ if __name__ == '__main__':
         help='where data will be saved.')
 
     FLAGS, unparsed = parser.parse_known_args()
-
     gen_dataset()
