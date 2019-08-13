@@ -33,15 +33,24 @@ Thus, I wrote a pytorch captcha solver with more functionality and an easy to us
    * train model:
     
         * command line
-            possible parameter -d -l -e --convLayer --convKernel --fcLayer --pretrainedModel --fixConv
+            easy usage:
+            
+            possible parameter -d -l -e
             required parameter -d
+
             
             e.g. python3 ./cnn_captcha.py -d ./images/char-2-epoch-1 
             e.g. python3 ./cnn_captcha.py -d ./images/char-2-epoch-1 -l ./images/char-2-epoch-1/30_checkpoint.tar -e 60
-            e.g. python3 cnn_captcha.py -d images/char-5-epoch-10/ --pretrainedModel ./images/char-2-epoch-10/30_checkpoint.tar
+
+            more advanced usage:
+
+            possible parameter -d -l -e --convLayer --convKernel --fcLayer --pretrainedModel --fixConv
+            required parameter -d
+
+            e.g. python3 cnn_captcha.py -d images/char-5-epoch-10/ --convLayer 3 --convKernel 7 --fcLayer 4
+            e.g. python3 cnn_captcha.py -d images/char-5-epoch-10/ --pretrainedModel ./images/char-2-epoch-10/30_checkpoint.tar --fixConv -e 15 --fcLayer 4
 
     * predict captcha:
-        * command line
             possible parameter -p -i -l
             required parameter -p -i -l
     

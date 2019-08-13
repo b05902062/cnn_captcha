@@ -233,6 +233,7 @@ def train(data):
 	
 	if META['loadCheck']:
 		checkpoint = torch.load(META['loadCheck'])
+		checkpoint['META']
 		cnn_sd = checkpoint['cnnModel']
 		fc_sd = checkpoint['fcModel']
 		#optimizer_sd = checkpoint['optim']
@@ -327,20 +328,22 @@ def main():
 
 	
 	parser.add_argument('-d','--data',help='A path to the directory containing training data (images).')
-	parser.add_argument('-l','--loadCheck',help='filename of a checkpoint, relative to current working directory')
+	parser.add_argument('-l','--loadCheck',help='path to a checkpoint. -h -w --npi of gen_captcha and --convLayer --convKernel --fcLayer if specified explicitly, if you are using default then it will be ok, in this file should be the same as checkpoint, for we are loading both conv and fc')
 	parser.add_argument('-p','--predict',action='store_true',help='A path for training data (images).')
 	parser.add_argument('-i','--image',help='A path to the image to precict.')
 	parser.add_argument('-e','--epoch',type=int,default=30,help='total number of epoch for either new model or resumed model. e.g. -e 30 -l 15_checkpoint.tar would train this model for 15 more epoches.')
 	parser.add_argument('--convLayer',type=int,default=2,help='number of layer for convNet')
 	parser.add_argument('--convKernel',type=int,default=5,help='size of kernel for convNet.')
 	parser.add_argument('--fcLayer',type=int,default=3,help='number of layer for fcNet')
-	parser.add_argument('--pretrainedModel',help='load pretrained convolution Model, for captcha with many letters are hard to train directly. e.g. load a 2 digit checkpoint to train a 5 digit. the height and width of the images should be the same')
+	parser.add_argument('--pretrainedModel',help='load pretrained convolution Model, for captcha with many letters are hard to train directly. e.g. load a 2 digit checkpoint to train a 5 digit model. -w -h of gen_captcha.py and --convLayer --convKernel if specified explicitly, if you are using default then it will be ok, should be the same as the old one, for we are loading a conv model.')
 	parser.add_argument('--fixConv',action='store_true',help='fix the parameters in convLayers.')
 	args = parser.parse_args()
 	
 	if args.predict and (args.image is None or args.loadCheck is None):
-		parser.error("[-i --image] [-l --loadCheck] are required")
+		#predict
+		parser.error("[-i --image] [-l --loadCheck] are required when predicting")
 	elif (not args.predict and args.data is None):
+		#training
 		parser.error("[-d --data] is required when training.")
 	elif args.convLayer <=1:
 		parser.error('convLayer has to be bigger of equal than 2')
