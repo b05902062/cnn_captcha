@@ -11,11 +11,17 @@ from torch.utils.data import Dataset, DataLoader
 import logging
 import skimage.io as io
 import cv2
+import psutil
+import gc
+import time
+
+
 META=None
 LOADCHECK=None
 PRINT_EVERY_BATCH=500
 LR_RATE=0.001
 BATCHSIZE=16
+
 
 FORMATTER = logging.Formatter("%(asctime)s — %(name)s — %(levelname)s — %(message)s")
 LOGGER = None
@@ -63,26 +69,35 @@ class AverageMeter(object):
 		self.count += n
 		self.avg = self.sum / self.count if self.count != 0 else 0
 
-
-
 class captchaDataset(Dataset):
 
-	def __init__(self,dataList,dataAns):
+	def __init__(self,dataList,dataAns,batchSize,eval=None):
 
 		self.data=dataList
 		self.ans=dataAns
+		self.batchSize=batchSize
+		self.eval=eval
 	def __len__(self):
 		return len(self.data)
-	def __getitem__(self,idx):
+	def __iter__(self):
+	
+		if not self.eval:
+			perm=torch.randperm(len(self))
+		else:
+			perm = torch.arange(len(self))
 
-		#image is a tensor
-		image=io.imread(self.data[idx])
-		image=torch.from_numpy(image).type(torch.FloatTensor)
+		for i in range((len(self)-1+self.batchSize)//self.batchSize):
+			batchIdx=perm[i*self.batchSize:(i+1)*self.batchSize]
+			imgList=[]
+			ansList=[]
+			for o in batchIdx:
+				imgList.append(torch.from_numpy(io.imread(self.data[o])).type(torch.FloatTensor).unsqueeze(dim=0))
+				ansList.append(self.ans[o].unsqueeze(dim=0))	
+			imgList=torch.cat(imgList,0)
+			ansList=torch.cat(ansList,0)
+			#LOGGER.debug(f'{imgList},{ansList}')
 
-		#ans is a tensor of length meta['num_per_image']
-		ans=self.ans[idx]
-
-		return (image,ans)
+			yield imgList,ansList
 
 def preprocess():
 
@@ -97,7 +112,7 @@ def preprocess():
 	trainImgAns=trainImgList.copy()
 	trainImgList=[os.path.join(DATADIR,"train",i) for i in trainImgList]
 
-	#Ans becomes a list of tensor(answer) of size equals the number of training images.
+	#Ans becomes a list of tensor(answer) of size equals the number of training images*num_per_image.
 	trainImgAns=[ans[:meta['num_per_image']] for ans in trainImgAns]
 	trainImgAns=[ torch.tensor([meta['label_choices'].find(digit) for digit in ans]) for ans in trainImgAns]	
 	testImgList=os.listdir(os.path.join(DATADIR,'test'))
@@ -220,8 +235,17 @@ def getAns(output):
 def train(data):
 
 	
-	trainLoader = DataLoader(captchaDataset(data[1],data[2]), batch_size=BATCHSIZE,shuffle=True)
-	testLoader = DataLoader(captchaDataset(data[3],data[4]), batch_size=BATCHSIZE,shuffle=False)
+	#trainLoader = DataLoader(captchaDataset(data[1],data[2]), batch_size=BATCHSIZE,shuffle=True)
+	#testLoader = DataLoader(captchaDataset(data[3],data[4]), batch_size=BATCHSIZE,shuffle=False)
+	trainLoader=captchaDataset(data[1],data[2],batchSize=16)
+	testLoader=captchaDataset(data[3],data[4],batchSize=16)
+	'''
+	count=0
+	for i in trainLoader:
+		count+=1
+		if count>3:
+			exit()
+	'''
 
 	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 	LOGGER.info("using {}".format(device))
@@ -262,9 +286,13 @@ def train(data):
 	for o in range(start_epoch,META['epoch']):
 		start_epoch+=1
 		for i, batch in enumerate(trainLoader):
+
+
 			net.train()
 			#(batch*height*width,batch*num_per_img)
 			batch=(batch[0].to(device),batch[1].to(device))
+
+			#LOGGER.debug(f'cuda memory {torch.cuda.memory_allocated()}')
 			output=net(batch[0])
 			loss,_,_ =evaluate(output,batch[1])#calling batch[1] would get ans.
 				
@@ -272,22 +300,22 @@ def train(data):
 			optimizer.zero_grad()
 			loss.backward()
 			optimizer.step()
-			if i % PRINT_EVERY_BATCH==0:	
+			if i % PRINT_EVERY_BATCH==PRINT_EVERY_BATCH-1:	
 				net.eval()
 				meterBCELoss=AverageMeter()
 				meterImgAcc=AverageMeter()
 				meterLetAcc=AverageMeter()
 				#LOGGER.debug(f'cnn parametres {list(net.cnnNet.parameters())}')
-				for e,batch in enumerate(testLoader):
-		
+				for batch in testLoader:
+							
 					batch=(batch[0].to(device),batch[1].to(device))
 					output=net(batch[0])
 					testEval=evaluate(output,batch[1])
-					meterBCELoss.update(testEval[0],batch[1].shape[0])
-					meterLetAcc.update(testEval[1],batch[1].shape[0])
-					meterImgAcc.update(testEval[2],batch[1].shape[0])
+					meterBCELoss.update(testEval[0].item(),batch[1].shape[0])
+					meterLetAcc.update(testEval[1].item(),batch[1].shape[0])
+					meterImgAcc.update(testEval[2].item(),batch[1].shape[0])
 			
-				LOGGER.info("epoch: {:05d}, in_loss: {:.3f}, out_loss: {:.3f}, outLetterAcc: {:.3f}, outImageAcc: {:.3f}".format(o,loss, meterBCELoss.avg,meterLetAcc.avg,meterImgAcc.avg))
+				LOGGER.info("epoch: {:03d}, {:05d}th batch in_loss: {:.3f}, out_loss: {:.3f}, outLetterAcc: {:.3f}, outImageAcc: {:.3f}".format(start_epoch,i+1,loss, meterBCELoss.avg,meterLetAcc.avg,meterImgAcc.avg))
 
 	torch.save({"iteration":start_epoch,"cnnModel":net.cnnNet.state_dict(),'fcModel':net.fcNet.state_dict(),"optim":optimizer.state_dict(),"META":META,"letAcc":meterLetAcc.avg,"imgAcc":meterImgAcc.avg},os.path.join(DATADIR,"{}_{}.tar".format(start_epoch,"checkpoint")))
 
