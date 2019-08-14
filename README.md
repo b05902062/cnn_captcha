@@ -108,7 +108,7 @@ This is a program used to train model and predict images.
             
             e.g. python3 ./cnn_captcha.py -d ./images/char-2-epoch-10
             e.g. python3 ./cnn_captcha.py -d ./images/char-2-epoch-10 -l ./images/char-2-epoch-1/30_checkpoint.tar -e 40 -b 16
-
+    These command would automatically generate a checkpoint file in the directory passed to -d that can be used to predict images, see below for the prediction part of this program, resume training, and pretrain our model, see examples or the above description on how to use these functionalities.
      * more advanced usage:
 
             possible parameter -d -l -e -b --printEveryBatch --learnRate --weightDecay --convLayer --convKernel --fcLayer --pretrainedModel --fixConv
@@ -136,13 +136,13 @@ This is a program used to train model and predict images.
         required parameter -p -i -l
         
         e.g. python3 ./cnn_captcha.py -p -i ./images/char-2-epoch-10/test/<fileNameOfAnImage> -l ./images/char-2-epoch-10/30_checkpoint.tar
-    Pass -i a path to an image file.
+    Pass -i a path to an image file. After running this line you should see the predicted answer at stdout.
             
 * function call:
         
         import cnn_captcha
         cnn_captcha.predict('./images/234.png','./model/10_checkpoint.tar')
-        
+    cnn_captcha.predict(img,checkpoint) takes a path to an image file and a path to a checkpoint generated as illustrated above. This function would return the predicted answer as a string.
 * note:
           
     Images to be predicted should have the same width and height of the training data. Depending on the difference between training data and images to be predicted, the performance can be quite bad actually. Fetching data that is generated from the source that you want to predict if high accuracy rate is what you need.
