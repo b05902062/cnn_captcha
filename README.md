@@ -107,7 +107,7 @@ This is a program used to train model and predict images.
 
             
             e.g. python3 ./cnn_captcha.py -d ./images/char-2-epoch-10
-            e.g. python3 ./cnn_captcha.py -d ./images/char-2-epoch-10 -l ./images/char-2-epoch-1/30_checkpoint.tar -e 10 -b 16
+            e.g. python3 ./cnn_captcha.py -d ./images/char-2-epoch-10 -l ./images/char-2-epoch-1/30_checkpoint.tar -e 40 -b 16
 
      * more advanced usage:
 
@@ -116,7 +116,7 @@ This is a program used to train model and predict images.
 
             e.g. python3 cnn_captcha.py -d images/char-5-epoch-10/ --convLayer 3 --convKernel 7 --fcLayer 4
             e.g. python3 cnn_captcha.py -d images/char-5-epoch-10/ --learnRate 0.0001 -b 16 --printEveryBatch 1 
-            e.g. python3 cnn_captcha.py -d images/char-5-epoch-10/ --pretrainedModel ./images/char-2-epoch-10/30_checkpoint.tar --fixConv -e 15 --fcLayer 4
+            e.g. python3 cnn_captcha.py -d images/char-5-epoch-10/ --pretrainedModel ./images/char-2-epoch-10/30_checkpoint.tar --fixConv -e 45 --fcLayer 4
 
 	
 * note:
@@ -130,12 +130,13 @@ This is a program used to train model and predict images.
 ### predict captcha:
             
 
-    possible parameter -p -i -l
-    required parameter -p -i -l
-	    
 * command line:
 
-        e.g. python3 ./cnn_captcha.py -p -i ./images/char-2-epoch-10/test/<please select a image> -l ./images/char-2-epoch-10/30_checkpoint.tar
+        possible parameter -p -i -l
+        required parameter -p -i -l
+        
+        e.g. python3 ./cnn_captcha.py -p -i ./images/char-2-epoch-10/test/<fileNameOfAnImage> -l ./images/char-2-epoch-10/30_checkpoint.tar
+    Pass -i a path to an image file.
             
 * function call:
         
