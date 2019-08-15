@@ -339,17 +339,17 @@ def predict(imgFile,loadCheck):
 	device = torch.device("cpu")
 	LOGGER.info("using {}".format(device))
 
-	checkpoint = torch.load(loadCheck)
+	checkpoint = torch.load(loadCheck,map_location=device)
 	META=checkpoint['META']	
 
 	net=captchaNet()
+	net.to(device)
 
 	cnn_sd = checkpoint['cnnModel']
 	fc_sd = checkpoint['fcModel']
 	net.cnnNet.load_state_dict(cnn_sd)
 	net.fcNet.load_state_dict(fc_sd)
 
-	net.to(device)
 	net.eval()
 
 	#img=torch.from_numpy(io.imread(imgFile)).type(torch.FloatTensor).to(device).unsqueeze(dim=0)
@@ -360,7 +360,9 @@ def predict(imgFile,loadCheck):
 	'''
 
 	img=cv2.imread(imgFile,1)#color image three channel
-
+	if img is None:
+		LOGGER.info("Error:image file not found")
+		exit()	
 	if img.shape[0]!=META['height'] or img.shape[1]!=META['width']:
 		LOGGER.info("Error: images to be predicted should have the same width and height of the training data.")
 		exit()
@@ -374,6 +376,10 @@ def predict(imgFile,loadCheck):
 	'''
 
 	LOGGER.info("Predicted captcha {}".format(ans))
+	handlers=LOGGER.handlers[:]
+	for i in handlers:
+		i.close()
+		LOGGER.removeHandler(i)
 	return ans
 
 def main():
@@ -469,7 +475,11 @@ def main():
 		LOGGER.info("start training...")
 		train(data)
 		LOGGER.info("training finished")
-
+		
+		handlers=LOGGER.handlers[:]
+		for i in handlers:
+			i.close()
+			LOGGER.removeHandler(i)
 
 
 if __name__=="__main__":
