@@ -79,11 +79,19 @@ This is a program used to train model and predict images.
                         learning rate for the optimizer
     --weightDecay WEIGHTDECAY
                         L2 regulizer
+    --grayScale           Load in all training images as gray scale images. When
+                        using this mode all the following operation should and
+                        will be performed in this mode.
     --convLayer CONVLAYER
-                        number of layer for convNet
+                        number of layers for convolution network. More layers
+                        may be able to capture a larger pattern, especially
+                        when the image size is big.
     --convKernel CONVKERNEL
-                        size of kernel for convNet.
-    --fcLayer FCLAYER     number of layer for fcNet
+                        size of the kernel for all convolution network. Larger
+                        kernel may be able to capture a larger pattern in a
+                        image, especially when the image size is big.
+    --fcLayer FCLAYER     number of layers for fully connected network. It
+                        results in a bigger model.
     --pretrainedModel PRETRAINEDMODEL
                         load pretrained convolution Model, for captcha with
                         many letters are hard to train directly. e.g. load a 2
@@ -111,13 +119,13 @@ This is a program used to train model and predict images.
     These command would automatically generate a checkpoint file in the directory passed to -d that can be used to predict images, see below for the prediction part of this program, resume training, and pretrain our model, see examples or the above description on how to use these functionalities.
      * more advanced usage:
 
-            possible parameter -d -l -e -b --printEveryBatch --learnRate --weightDecay --convLayer --convKernel --fcLayer --pretrainedModel --fixConv
+            possible parameter -d -l -e -b --printEveryBatch --learnRate --weightDecay --grayScale --convLayer --convKernel --fcLayer --pretrainedModel --fixConv
             required parameter -d
 
             e.g. python3 cnn_captcha.py -d images/char-5-epoch-10/ --convLayer 3 --convKernel 7 --fcLayer 4
             e.g. python3 cnn_captcha.py -d images/char-5-epoch-10/ --learnRate 0.0001 -b 16 --printEveryBatch 1 
             e.g. python3 cnn_captcha.py -d images/char-5-epoch-10/ --pretrainedModel ./images/char-2-epoch-10/30_checkpoint.tar --fixConv -e 45 --fcLayer 4
-
+            e.g. python3 cnn_captcha.py -d images/char-1-epoch-5/ --grayScale --convLayer 3 --fcLayer 3 -e 10 --printEveryBatch 100
 	
 * note:
          

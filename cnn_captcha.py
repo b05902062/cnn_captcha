@@ -56,7 +56,7 @@ class AverageMeter(object):
 		self.sum += val * n
 		self.count += n
 		self.avg = self.sum / self.count if self.count != 0 else 0
-
+'''
 class my_captchaDataset(Dataset):
 
 	def __init__(self,dataList,dataAns,batchSize,eval=None):
@@ -86,24 +86,29 @@ class my_captchaDataset(Dataset):
 			#LOGGER.debug(f'{imgList},{ansList}')
 
 			yield imgList,ansList
+'''
+
 class captchaDataset(Dataset):
 
-        def __init__(self,dataList,dataAns):
+	def __init__(self,dataList,dataAns):
 
-                self.data=dataList
-                self.ans=dataAns
-        def __len__(self):
-                return len(self.data)
-        def __getitem__(self,idx):
+		self.data=dataList
+		self.ans=dataAns
+	def __len__(self):
+		return len(self.data)
+	def __getitem__(self,idx):
 
-                #image is a tensor
-                image=io.imread(self.data[idx])
-                image=torch.from_numpy(image).type(torch.FloatTensor)
+		#image is a tensor
+		image=cv2.imread(self.data[idx],0 if META['grayScale'] else 1)
+		image=torch.from_numpy(image).type(torch.FloatTensor)
+		if META['grayScale']:
+			image=image.unsqueeze(2)
 
-                #ans is a tensor of length meta['num_per_image']
-                ans=self.ans[idx]
 
-                return (image,ans)
+		#ans is a tensor of length meta['num_per_image']
+		ans=self.ans[idx]
+
+		return (image,ans)
 
 
 
@@ -158,7 +163,12 @@ class cnnNet(nn.Module):
 		self.cnnList=nn.ModuleList()
 		for i in range(self.convLayer):
 			#nn.Conv2d(in_channel,out_channel,kernel)
-			self.cnnList.append(nn.Conv2d(3,16,self.convKernel) if i==0 else nn.Conv2d(16,16,self.convKernel) )
+			if i==0 and not META['grayScale']:
+				self.cnnList.append(nn.Conv2d(3,16,self.convKernel))
+			elif i==0:
+				self.cnnList.append(nn.Conv2d(1,16,self.convKernel))
+			else:
+				self.cnnList.append(nn.Conv2d(16,16,self.convKernel))
 
 		#nn.MacPool2d(kernel,stride),fixed here.
 		self.pool=nn.MaxPool2d(2,2)
@@ -232,7 +242,7 @@ def evaluate(output,ans):
 	#ouput becomes (batchSize*num_per_image) * label_size)
 	output=output.view(-1,META['label_size'])
 	ans=ans.view(batchSize*META['num_per_image'])
-	y=torch.zeros(batchSize*META['num_per_image'],META['label_size']).cuda()
+	y=torch.zeros(batchSize*META['num_per_image'],META['label_size']).cuda(ans.device)#use the same device as others.
 	y[range(y.shape[0]),ans]=1
 	return F.binary_cross_entropy_with_logits(output,y),letterAcc,imageAcc
 
@@ -249,6 +259,7 @@ def train(data):
 	#testLoader=my_captchaDataset(data[3],data[4],batchSize=16)
 
 	device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+	torch.cuda.device(device)
 	LOGGER.info("using {}".format(device))
 
 	net=captchaNet()
@@ -359,7 +370,7 @@ def predict(imgFile,loadCheck):
 	probably comment the below if statement, too.
 	'''
 
-	img=cv2.imread(imgFile,1)#color image three channel
+	img=cv2.imread(imgFile,0 if META['grayScale'] else 1)#1 for a color image, 0 for a grayScale one.
 	if img is None:
 		LOGGER.info("Error:image file not found")
 		exit()	
@@ -368,6 +379,8 @@ def predict(imgFile,loadCheck):
 		exit()
 
 	img=torch.from_numpy(img).type(torch.FloatTensor).to(device).unsqueeze(dim=0)
+	if META['grayScale']:
+		img=img.unsqueeze(dim=3)
 	ans=net(img).view(META['num_per_image'],META['label_size']).argmax(dim=1)
 	ans=''.join(META['label_choices'][i] for i in list(ans))
 	
@@ -399,9 +412,11 @@ def main():
 	parser.add_argument('--printEveryBatch',type=int,default=10,help='print loss every this number of unit.')
 	parser.add_argument('--learnRate',type=int,default=0.001,help='learning rate for the optimizer')
 	parser.add_argument('--weightDecay',type=int,default=0,help='L2 regulizer')
-	parser.add_argument('--convLayer',type=int,default=2,help='number of layer for convNet')
-	parser.add_argument('--convKernel',type=int,default=5,help='size of kernel for convNet.')
-	parser.add_argument('--fcLayer',type=int,default=3,help='number of layer for fcNet')
+	parser.add_argument('--grayScale',action='store_true',help='Load in all training images as gray scale images. When using this mode all the following operation should and will be performed in this mode.')
+
+	parser.add_argument('--convLayer',type=int,default=2,help='number of layers for convolution network. More layers may be able to capture a larger pattern, especially when the image size is big.')
+	parser.add_argument('--convKernel',type=int,default=5,help='size of the kernel for all convolution network. Larger kernel may be able to capture a larger pattern in a image, especially when the image size is big.')
+	parser.add_argument('--fcLayer',type=int,default=3,help='number of layers for fully connected network. It results in a bigger model.')
 	parser.add_argument('--pretrainedModel',help='load pretrained convolution Model, for captcha with many letters are hard to train directly. e.g. load a 2 digit checkpoint to train a 5 digit model. -w -h of gen_captcha.py and --convLayer --convKernel if specified explicitly, if you are using default then it will be ok, should be the same as the old one, for we are loading a conv model.')
 	parser.add_argument('--fixConv',action='store_true',help='fix the parameters in convLayers.')
 
@@ -424,35 +439,35 @@ def main():
 		flag=0
 		checkpoint = torch.load(args.loadCheck)
 		oldMETA=checkpoint['META']
-		if oldMETA['convLayer']!=args.convLayer or oldMETA['convKernel']!=args.convKernel or oldMETA['fcLayer']!=args.fcLayer:
+		if oldMETA['convLayer']!=args.convLayer or oldMETA['convKernel']!=args.convKernel or oldMETA['fcLayer']!=args.fcLayer or oldMETA['grayScale']!=args.grayScale:
 			flag=1
 
 		with open(os.path.join(args.data,'meta.json')) as f:
-		    meta = json.load(f)
-		    f.close()
+			meta = json.load(f)
+			f.close()
 		
 		if meta['height']!=oldMETA['height'] or meta['width']!=oldMETA['width'] or meta['num_per_image']!=oldMETA['num_per_image']:
 			flag=1
 
 		if flag:
-			parser.error('when loading a checkpoint while training, --height --width --npi of gen_captcha and --convLayer --convKernel --fcLayer if specified explicitly, if you are using default then it will be ok, in this file should be the same as checkpoint, for we are loading both conv and fc')
+			parser.error('when loading a checkpoint while training, --height --width --npi of gen_captcha and --convLayer --convKernel --fcLayer --grayScaleif specified explicitly, if you are using default then it will be ok, in this file should be the same as checkpoint, for we are loading both conv and fc')
 
 	elif (not args.predict and args.pretrainedModel):
 		flag=0
 		checkpoint = torch.load(args.pretrainedModel)
 		oldMETA=checkpoint['META']
-		if oldMETA['convLayer']!=args.convLayer or oldMETA['convKernel']!=args.convKernel:
+		if oldMETA['convLayer']!=args.convLayer or oldMETA['convKernel']!=args.convKernel or oldMETA['grayScale']!=args.grayScale:
 			flag=1
 
 		with open(os.path.join(args.data,'meta.json')) as f:
-		    meta = json.load(f)
-		    f.close()
+			meta = json.load(f)
+			f.close()
 		
 		if meta['height']!=oldMETA['height'] or meta['width']!=oldMETA['width']:
 			flag=1
 
 		if flag:
-			parser.error('--width --height of gen_captcha.py and --convLayer --convKernel if specified explicitly, if you are using default then it will be ok, should be the same as the old one, for we are loading a conv model.')
+			parser.error('--width --height of gen_captcha.py and --convLayer --convKernel --grayScale if specified explicitly, if you are using default then it will be ok, should be the same as the old one, for we are loading a conv model.')
 
 
 	#program actually starts here.
