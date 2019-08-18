@@ -40,7 +40,7 @@ Parameters -s -height -width are added to the original file.
 
         
         e.g. python3 ./gen_captcha.py -s 100 --npi 5 -d --width 140 --height 45 
-    This would generate 100 images of size height 45 * width 140 containing 5 digits in the directory /char-5-sample-10/train in a default path ./image. 
+    This would generate 100 images of size height 45 * width 140 containing 5 digits in the directory /char-5-sample-100/train in a default path ./image. 
     
     It would also generate a testing dataset and a meta.json. All image names are prefixed with answers. Try running the above little example to see the details. 
         
