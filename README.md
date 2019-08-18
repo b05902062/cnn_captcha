@@ -9,9 +9,9 @@ Thus, I wrote a pytorch captcha solver. It has an easy to use interface for naiv
 
 ## try in command line to generate a small example:
 
-    python3 ./gen_captcha.py -n 10 -s 100 --npi=2 -d
-    python3 ./cnn_captcha.py -d ./images/char-2-epoch-10 -e 20
-    python3 ./cnn_captcha.py -p -i ./images/char-2-epoch-10/test/<please select a image> -l ./images/char-2-epoch-10/20_checkpoint.tar
+    python3 ./gen_captcha.py -s 100 --npi 2 -d
+    python3 ./cnn_captcha.py -d ./images/char-2-sample-100 -e 20
+    python3 ./cnn_captcha.py -p -i ./images/char-2-sample-100/test/<please select a image> -l ./images/char-2-sample-100/20_checkpoint.tar
 
 try to generate a larger dataset or fetch one by your self to get better performance. See indivisual usage below.
 
@@ -23,27 +23,24 @@ Parameters -s -height -width are added to the original file.
   
 
     -h, --help           show this help message and exit
-    -n N                 epoch number of character permutations.
-    -s S                 sample number per epoch.
+    -s S                 the number of captchas to generate for training.
     --height HEIGHT      number of pixel in height.
     --width WIDTH        number of pixel in width.
-    -t T                 ratio used to generate testing dataset.
-                           e.g. -n 10 -s 100 -t 0.2 would result in 
-                           a training dataset with n * s = 10 * 100 samples 
-                           and a testing dataset with n * t * s = 
-                           10 * 0.2 * 1000 samples.
-    -d, --digit          include digits as possible choices.
-    -l, --lower          include lowercase as possible choice.
-    -u, --upper          include uppercase as possible choices.
+    -t T                 ratio of test dataset. default to 0.2. -s * -t captchas
+                       will be generated for testing
+    -d, --digit          use digits in dataset.
+    -l, --lower          use lowercase in dataset.
+    -u, --upper          use uppercase in dataset.
     --npi NPI            number of characters per image.
     --data_dir DATA_DIR  where data will be saved.
+
 
   * command line
   
 
         
-        e.g. python3 ./gen_captcha.py -n 10 -s 100 --npi=5 -d --width 140 --height 45 
-    This would generate 10*1000 images of size height 45 * width 140 containing 5 digits in directory /char-5-epoch-10/train in a default path ./image. 
+        e.g. python3 ./gen_captcha.py -s 100 --npi 5 -d --width 140 --height 45 
+    This would generate 100 images of size height 45 * width 140 containing 5 digits in the directory /char-5-sample-10/train in a default path ./image. 
     
     It would also generate a testing dataset and a meta.json. All image names are prefixed with answers. Try running the above little example to see the details. 
         
@@ -114,24 +111,24 @@ This is a program used to train model and predict images.
             required parameter -d
 
             
-            e.g. python3 ./cnn_captcha.py -d ./images/char-2-epoch-10
-            e.g. python3 ./cnn_captcha.py -d ./images/char-2-epoch-10 -l ./images/char-2-epoch-1/30_checkpoint.tar -e 40 -b 16
-    These command would automatically generate a checkpoint file in the directory passed to -d that can be used to predict images, see below for the prediction part of this program, resume training, and pretrain our model, see examples or the above description on how to use these functionalities.
+            e.g. python3 ./cnn_captcha.py -d ./images/char-2-sample-10
+            e.g. python3 ./cnn_captcha.py -d ./images/char-2-sample-10 -l ./images/char-2-sample-1/30_checkpoint.tar -e 40 -b 16
+    These command would automatically generate a checkpoint file in the directory passed to -d that can be used to predict images, see below for the prediction part of this program, resume training, and pretrain a model, see examples or the above description on how to use these functionalities.
      * more advanced usage:
 
             possible parameter -d -l -e -b --printEveryBatch --learnRate --weightDecay --grayScale --convLayer --convKernel --fcLayer --pretrainedModel --fixConv
             required parameter -d
 
-            e.g. python3 cnn_captcha.py -d images/char-5-epoch-10/ --convLayer 3 --convKernel 7 --fcLayer 4
-            e.g. python3 cnn_captcha.py -d images/char-5-epoch-10/ --learnRate 0.0001 -b 16 --printEveryBatch 1 
-            e.g. python3 cnn_captcha.py -d images/char-5-epoch-10/ --pretrainedModel ./images/char-2-epoch-10/30_checkpoint.tar --fixConv -e 45 --fcLayer 4
-            e.g. python3 cnn_captcha.py -d images/char-1-epoch-5/ --grayScale --convLayer 3 --fcLayer 3 -e 10 --printEveryBatch 100
+            e.g. python3 cnn_captcha.py -d images/char-5-sample-10/ --convLayer 3 --convKernel 7 --fcLayer 4
+            e.g. python3 cnn_captcha.py -d images/char-5-sample-10/ --learnRate 0.0001 -b 16 --printEveryBatch 1 
+            e.g. python3 cnn_captcha.py -d images/char-5-sample-10/ --pretrainedModel ./images/char-2-sample-10/30_checkpoint.tar --fixConv -e 45 --fcLayer 4
+            e.g. python3 cnn_captcha.py -d images/char-1-sample-5/ --grayScale --convLayer 3 --fcLayer 3 -e 10 --printEveryBatch 100
 	
 * note:
          
     A larger dataset and appropriate parameter settings, e.g. batchSize, can result in better performance. This model can also take in training data generated from other sourses. But in order to train this model from them, Please follow the dataset structure generated by gen_captcha.py.
     
-    Parameter -d is passed a path to a directory that contains a meta file named meta.json, a directory named /test containing testing images, and a directory named /train containing training images. Try the above small example to see their contents in detail. All images should have the same size and have names prefixed by answers for that image.
+    Parameter -d of cnn_captcha.py is passed a path to a directory that contains a meta file named meta.json, a directory named /test containing testing images, and a directory named /train containing training images. Try the above small example to see their contents in detail. All images should have the same size and have names prefixed by answers for that image.
   
 
 
@@ -143,7 +140,7 @@ This is a program used to train model and predict images.
         possible parameter -p -i -l
         required parameter -p -i -l
         
-        e.g. python3 ./cnn_captcha.py -p -i ./images/char-2-epoch-10/test/<fileNameOfAnImage> -l ./images/char-2-epoch-10/30_checkpoint.tar
+        e.g. python3 ./cnn_captcha.py -p -i ./images/char-2-sample-10/test/<fileNameOfAnImage> -l ./images/char-2-sample-10/30_checkpoint.tar
     Pass -i a path to an image file. After running this line you should see the predicted answer at stdout.
             
 * function call:

@@ -8,8 +8,6 @@ import numpy as np
 import uuid
 from captcha.image import ImageCaptcha
 
-import itertools
-
 FLAGS = None
 META_FILENAME = 'meta.json'
 
@@ -23,7 +21,7 @@ def get_choices():
     return tuple([i for is_selected, subset in choices for i in subset if is_selected])
 
 
-def _gen_captcha(img_dir, num_per_image, n,sampleNum, width, height, choices):
+def _gen_captcha(img_dir, num_per_image,sampleNum, width, height, choices):
     if os.path.exists(img_dir):
         shutil.rmtree(img_dir)
     if not os.path.exists(img_dir):
@@ -31,21 +29,19 @@ def _gen_captcha(img_dir, num_per_image, n,sampleNum, width, height, choices):
 
     image = ImageCaptcha(width=width, height=height)
 
-    print('generating %s epoches of captchas in %s' % (n, img_dir))
-    for _ in range(n):
-        for a in range(sampleNum):
-            i=[choices[np.random.randint(0,len(choices))] for dNum in range(num_per_image) ]
-            captcha = ''.join(i)
-            fn = os.path.join(img_dir, '%s_%s.png' % (captcha, uuid.uuid4()))
-            image.write(captcha, fn)
+    print('generating %s captchas in %s' % (sampleNum, img_dir))
+    for a in range(sampleNum):
+        i=[choices[np.random.randint(0,len(choices))] for dNum in range(num_per_image) ]
+        captcha = ''.join(i)
+        fn = os.path.join(img_dir, '%s_%s.png' % (captcha, uuid.uuid4()))
+        image.write(captcha, fn)
 
 
 def build_file_path(x):
-    return os.path.join(FLAGS.data_dir, 'char-%s-epoch-%s' % (FLAGS.npi, FLAGS.n), x)
+    return os.path.join(FLAGS.data_dir, 'char-%s-sample-%s' % (FLAGS.npi, FLAGS.s), x)
 
 
 def gen_dataset():
-    n_epoch = FLAGS.n
     n_sample = FLAGS.s
     num_per_image = FLAGS.npi
     test_ratio = FLAGS.t
@@ -66,16 +62,14 @@ def gen_dataset():
         'num_per_image': num_per_image,
         'label_size': len(choices),
         'label_choices': ''.join(choices),
-        'n_epoch': n_epoch,
-	'n_sample':n_sample,
         'width': width,
         'height': height,
     }
 
     print('%s choices: %s' % (len(choices), ''.join(choices) or None))
 
-    _gen_captcha(build_file_path('train'), num_per_image, n_epoch,n_sample, width, height, choices=choices)
-    _gen_captcha(build_file_path('test'), num_per_image, max(1, int(n_epoch * test_ratio)),n_sample, width, height, choices=choices)
+    _gen_captcha(build_file_path('train'), num_per_image,n_sample, width, height, choices=choices)
+    _gen_captcha(build_file_path('test'), num_per_image,int(n_sample*test_ratio), width, height, choices=choices)
 
     meta_filename = build_file_path(META_FILENAME)
     with open(meta_filename, 'w') as f:
@@ -87,16 +81,10 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        '-n',
-        default=1,
-        type=int,
-        help='epoch number of character permutations.')
-
-    parser.add_argument(
         '-s',
         default=1000,
         type=int,
-        help='sample number per epoch.')
+        help='the number of captchas to generate for training.')
     parser.add_argument(
         '--height',
         type=int,
@@ -109,7 +97,7 @@ if __name__ == '__main__':
         '-t',
         default=0.2,
         type=float,
-        help='ratio of test dataset.')
+        help='ratio of test dataset. default to 0.2. -s * -t captchas will be generated for testing')
 
     parser.add_argument(
         '-d', '--digit',
@@ -135,4 +123,7 @@ if __name__ == '__main__':
         help='where data will be saved.')
 
     FLAGS, unparsed = parser.parse_known_args()
+    if not (FLAGS.digit or FLAGS.upper or FLAGS.lower):
+        parser.error('specify at least one among -d -l -u.')	
+
     gen_dataset()

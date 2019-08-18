@@ -1,4 +1,5 @@
-./.gitignore
+/untracked
+/darken*
 /char*
 /*.png
 /ImageCode*

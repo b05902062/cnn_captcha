@@ -276,7 +276,7 @@ def train(data):
 		fc_sd = checkpoint['fcModel']
 		#optimizer_sd = checkpoint['optim']
 		start_epoch= checkpoint['iteration']
-		LOGGER.info(f"resume training at {start_epoch} epoch.")
+		LOGGER.info(f"resume training at {start_epoch+1}th epoch.")
 		if start_epoch>=META['epoch']:
 			LOGGER.info("epoch number too smaller")
 			exit()
